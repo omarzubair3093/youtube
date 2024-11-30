@@ -74,10 +74,9 @@ class VideoChat:
         try:
             if not openai_api_key or openai_api_key.isspace():
                 raise ValueError("OpenAI API key is required")
-            # Create the OpenAI client with base_url
+            # Create the OpenAI client with just the API key
             self.client = OpenAI(
-                api_key=openai_api_key,
-                base_url="https://api.openai.com/v1"  # Explicitly set the base URL
+                api_key=openai_api_key
             )
             self.whisper_model = None
             self.transcript = ""
