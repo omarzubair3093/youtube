@@ -8,6 +8,7 @@ from pydub import AudioSegment
 import os
 from dotenv import load_dotenv
 import warnings
+from urllib.parse import urlparse, parse_qs
 warnings.filterwarnings("ignore")
 
 # Load environment variables
@@ -51,7 +52,15 @@ st.markdown("""
 def extract_video_id(url: str) -> str:
     """Extract video ID from YouTube URL."""
     try:
-        return pytube.YouTube(url).video_id
+        # Handle different URL formats
+        if 'youtu.be' in url:
+            return url.split('/')[-1]
+        elif 'youtube.com' in url:
+            parsed_url = urlparse(url)
+            return parse_qs(parsed_url.query)['v'][0]
+        else:
+            st.error("Invalid YouTube URL format")
+            return None
     except Exception as e:
         st.error(f"Invalid YouTube URL: {str(e)}")
         return None
@@ -59,10 +68,14 @@ def extract_video_id(url: str) -> str:
 def get_video_details(url: str):
     """Get video title and thumbnail."""
     try:
-        yt = pytube.YouTube(url)
+        video_id = extract_video_id(url)
+        if not video_id:
+            return None
+            
+        yt = pytube.YouTube(f"https://youtube.com/watch?v={video_id}")
         return {
             'title': yt.title,
-            'thumbnail': yt.thumbnail_url
+            'thumbnail': f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
         }
     except Exception as e:
         st.error(f"Error fetching video details: {str(e)}")
@@ -82,7 +95,6 @@ class VideoChat:
             st.error(f"Error initializing OpenAI client: {str(e)}")
             raise
         
-    @st.cache_data
     def get_transcript(self, youtube_url: str) -> str:
         """Get transcript using available captions or speech recognition."""
         try:
@@ -102,7 +114,7 @@ class VideoChat:
                 
                 with tempfile.TemporaryDirectory() as temp_dir:
                     # Download audio
-                    yt = pytube.YouTube(youtube_url)
+                    yt = pytube.YouTube(f"https://youtube.com/watch?v={video_id}")
                     audio_stream = yt.streams.filter(only_audio=True).first()
                     audio_file = audio_stream.download(output_path=temp_dir)
                     
@@ -139,7 +151,7 @@ class VideoChat:
                     temperature=0.7
                 )
             
-            return response.choices[0].message.content
+            return response.choices[0].message['content']
 
         except Exception as e:
             st.error(f"Error in chat: {str(e)}")
@@ -154,6 +166,8 @@ def main():
         st.session_state.conversation_history = []
     if 'video_url' not in st.session_state:
         st.session_state.video_url = ""
+    if 'transcript' not in st.session_state:
+        st.session_state.transcript = ""
     
     # Sidebar
     with st.sidebar:
@@ -202,8 +216,7 @@ def main():
     
     if youtube_url and youtube_url != st.session_state.video_url:
         st.session_state.video_url = youtube_url
-        if 'transcript' in st.session_state:
-            del st.session_state.transcript
+        st.session_state.transcript = ""
     
     if youtube_url:
         # Display video details
@@ -213,15 +226,16 @@ def main():
             st.subheader(details['title'])
         
         # Get transcript if not already loaded
-        if 'transcript' not in st.session_state:
+        if not st.session_state.transcript:
             with st.spinner("📝 Loading transcript..."):
-                st.session_state.transcript = st.session_state.video_chat.get_transcript(youtube_url)
-                st.session_state.video_chat.transcript = st.session_state.transcript
-            if st.session_state.transcript:
-                st.success("✅ Transcript loaded! You can now ask questions.")
-            else:
-                st.error("❌ Failed to load transcript. Please try another video.")
-                st.stop()
+                transcript = st.session_state.video_chat.get_transcript(youtube_url)
+                if transcript:
+                    st.session_state.transcript = transcript
+                    st.session_state.video_chat.transcript = transcript
+                    st.success("✅ Transcript loaded! You can now ask questions.")
+                else:
+                    st.error("❌ Failed to load transcript. Please try another video.")
+                    st.stop()
         
         # Question input
         question = st.text_input("💬 Ask a question about the video:", key="question_input")
