@@ -71,11 +71,19 @@ def get_video_details(url: str):
 class VideoChat:
     def __init__(self, openai_api_key: str):
         """Initialize with OpenAI API key."""
-        if not openai_api_key or openai_api_key.isspace():
-            raise ValueError("OpenAI API key is required")
-        self.client = OpenAI(api_key=openai_api_key)
-        self.whisper_model = None
-        self.transcript = ""
+        try:
+            if not openai_api_key or openai_api_key.isspace():
+                raise ValueError("OpenAI API key is required")
+            # Create the OpenAI client with base_url
+            self.client = OpenAI(
+                api_key=openai_api_key,
+                base_url="https://api.openai.com/v1"  # Explicitly set the base URL
+            )
+            self.whisper_model = None
+            self.transcript = ""
+        except Exception as e:
+            st.error(f"Error initializing OpenAI client: {str(e)}")
+            raise
         
     @st.cache_data
     def get_transcript(self, youtube_url: str) -> str:
