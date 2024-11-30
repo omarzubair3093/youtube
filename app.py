@@ -1,7 +1,7 @@
 import streamlit as st
 import pytube
 from youtube_transcript_api import YouTubeTranscriptApi
-from openai import OpenAI
+import openai
 import whisper
 import tempfile
 from pydub import AudioSegment
@@ -74,10 +74,8 @@ class VideoChat:
         try:
             if not openai_api_key or openai_api_key.isspace():
                 raise ValueError("OpenAI API key is required")
-            # Create the OpenAI client with just the API key
-            self.client = OpenAI(
-                api_key=openai_api_key
-            )
+            # Set the OpenAI API key globally
+            openai.api_key = openai_api_key
             self.whisper_model = None
             self.transcript = ""
         except Exception as e:
@@ -134,7 +132,7 @@ class VideoChat:
             ] + conversation_history + [{"role": "user", "content": question}]
 
             with st.spinner("Thinking..."):
-                response = self.client.chat.completions.create(
+                response = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=messages,
                     max_tokens=500,
