@@ -71,6 +71,8 @@ def get_video_details(url: str):
 class VideoChat:
     def __init__(self, openai_api_key: str):
         """Initialize with OpenAI API key."""
+        if not openai_api_key or openai_api_key.isspace():
+            raise ValueError("OpenAI API key is required")
         self.client = OpenAI(api_key=openai_api_key)
         self.whisper_model = None
         self.transcript = ""
@@ -116,6 +118,9 @@ class VideoChat:
     def chat_about_video(self, question: str, conversation_history: list) -> str:
         """Chat about the video content."""
         try:
+            if not self.transcript:
+                return "Please load a video transcript first."
+
             messages = [
                 {"role": "system", "content": "You are analyzing a video transcript to answer questions. Keep your responses concise and relevant to the video content."},
                 {"role": "system", "content": f"Transcript: {self.transcript}"},
@@ -133,7 +138,7 @@ class VideoChat:
 
         except Exception as e:
             st.error(f"Error in chat: {str(e)}")
-            return ""
+            return "Sorry, I encountered an error while processing your question. Please try again."
 
 def main():
     st.title("💭 YouTube Video Chat Analyzer")
@@ -152,11 +157,18 @@ def main():
             "OpenAI API Key:", 
             value=os.getenv('OPENAI_API_KEY', ''),
             type="password",
-            help="Enter your OpenAI API key. It will not be stored."
+            help="Enter your OpenAI API key or set it in Streamlit Secrets"
         )
         
-        if api_key:
+        if not api_key:
+            st.error("Please enter your OpenAI API key in the sidebar!")
+            st.stop()
+            
+        try:
             st.session_state.video_chat = VideoChat(api_key)
+        except ValueError as e:
+            st.error(str(e))
+            st.stop()
         
         st.markdown("---")
         st.markdown("""
@@ -188,7 +200,7 @@ def main():
         if 'transcript' in st.session_state:
             del st.session_state.transcript
     
-    if youtube_url and 'video_chat' in st.session_state:
+    if youtube_url:
         # Display video details
         details = get_video_details(youtube_url)
         if details:
@@ -202,6 +214,9 @@ def main():
                 st.session_state.video_chat.transcript = st.session_state.transcript
             if st.session_state.transcript:
                 st.success("✅ Transcript loaded! You can now ask questions.")
+            else:
+                st.error("❌ Failed to load transcript. Please try another video.")
+                st.stop()
         
         # Question input
         question = st.text_input("💬 Ask a question about the video:", key="question_input")
@@ -213,11 +228,12 @@ def main():
                 st.session_state.conversation_history
             )
             
-            # Update conversation history
-            st.session_state.conversation_history.extend([
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": response}
-            ])
+            if response:
+                # Update conversation history
+                st.session_state.conversation_history.extend([
+                    {"role": "user", "content": question},
+                    {"role": "assistant", "content": response}
+                ])
             
             # Clear question input
             st.session_state.question_input = ""
