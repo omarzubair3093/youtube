@@ -21,6 +21,16 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialize session state at the start
+if 'conversation_history' not in st.session_state:
+    st.session_state.conversation_history = []
+if 'video_url' not in st.session_state:
+    st.session_state.video_url = ""
+if 'transcript' not in st.session_state:
+    st.session_state.transcript = ""
+if 'question_input' not in st.session_state:
+    st.session_state.question_input = ""
+
 # Custom CSS
 st.markdown("""
     <style>
@@ -54,13 +64,17 @@ def extract_video_id(url: str) -> str:
     try:
         # Handle different URL formats
         if 'youtu.be' in url:
-            return url.split('/')[-1]
+            video_id = url.split('/')[-1]
         elif 'youtube.com' in url:
             parsed_url = urlparse(url)
-            return parse_qs(parsed_url.query)['v'][0]
+            video_id = parse_qs(parsed_url.query)['v'][0]
         else:
             st.error("Invalid YouTube URL format")
             return None
+            
+        if video_id:
+            return video_id.split('&')[0]  # Remove any additional parameters
+        return None
     except Exception as e:
         st.error(f"Invalid YouTube URL: {str(e)}")
         return None
@@ -72,9 +86,9 @@ def get_video_details(url: str):
         if not video_id:
             return None
             
-        yt = pytube.YouTube(f"https://youtube.com/watch?v={video_id}")
+        # Just return the thumbnail for now to avoid pytube issues
         return {
-            'title': yt.title,
+            'title': f"Video ID: {video_id}",
             'thumbnail': f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
         }
     except Exception as e:
@@ -87,7 +101,6 @@ class VideoChat:
         try:
             if not openai_api_key or openai_api_key.isspace():
                 raise ValueError("OpenAI API key is required")
-            # Set the OpenAI API key globally
             openai.api_key = openai_api_key
             self.whisper_model = None
             self.transcript = ""
@@ -113,20 +126,26 @@ class VideoChat:
                         self.whisper_model = whisper.load_model("base")
                 
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    # Download audio
-                    yt = pytube.YouTube(f"https://youtube.com/watch?v={video_id}")
-                    audio_stream = yt.streams.filter(only_audio=True).first()
-                    audio_file = audio_stream.download(output_path=temp_dir)
-                    
-                    # Convert to WAV
-                    audio = AudioSegment.from_file(audio_file)
-                    wav_path = os.path.join(temp_dir, "audio.wav")
-                    audio.export(wav_path, format="wav")
-                    
-                    # Transcribe
-                    with st.spinner("Transcribing audio..."):
-                        result = self.whisper_model.transcribe(wav_path)
-                        return result["text"]
+                    try:
+                        # Download audio using pytube
+                        yt = pytube.YouTube(f"https://youtube.com/watch?v={video_id}")
+                        audio_stream = yt.streams.filter(only_audio=True).first()
+                        if not audio_stream:
+                            raise Exception("No audio stream available")
+                        audio_file = audio_stream.download(output_path=temp_dir)
+                        
+                        # Convert to WAV
+                        audio = AudioSegment.from_file(audio_file)
+                        wav_path = os.path.join(temp_dir, "audio.wav")
+                        audio.export(wav_path, format="wav")
+                        
+                        # Transcribe
+                        with st.spinner("Transcribing audio..."):
+                            result = self.whisper_model.transcribe(wav_path)
+                            return result["text"]
+                    except Exception as e:
+                        st.error(f"Error processing audio: {str(e)}")
+                        return ""
                     
         except Exception as e:
             st.error(f"Error getting transcript: {str(e)}")
@@ -160,14 +179,6 @@ class VideoChat:
 def main():
     st.title("💭 YouTube Video Chat Analyzer")
     st.write("Have an interactive conversation about any YouTube video!")
-
-    # Initialize session state
-    if 'conversation_history' not in st.session_state:
-        st.session_state.conversation_history = []
-    if 'video_url' not in st.session_state:
-        st.session_state.video_url = ""
-    if 'transcript' not in st.session_state:
-        st.session_state.transcript = ""
     
     # Sidebar
     with st.sidebar:
@@ -184,7 +195,8 @@ def main():
             st.stop()
             
         try:
-            st.session_state.video_chat = VideoChat(api_key)
+            if 'video_chat' not in st.session_state:
+                st.session_state.video_chat = VideoChat(api_key)
         except ValueError as e:
             st.error(str(e))
             st.stop()
@@ -237,10 +249,8 @@ def main():
                     st.error("❌ Failed to load transcript. Please try another video.")
                     st.stop()
         
-        # Question input
-        question = st.text_input("💬 Ask a question about the video:", key="question_input")
-        
-        if question:
+        # Question input and processing
+        if question := st.text_input("💬 Ask a question about the video:", key="question_input_widget"):
             # Get response
             response = st.session_state.video_chat.chat_about_video(
                 question, 
@@ -253,9 +263,6 @@ def main():
                     {"role": "user", "content": question},
                     {"role": "assistant", "content": response}
                 ])
-            
-            # Clear question input
-            st.session_state.question_input = ""
 
         # Display conversation history
         for message in st.session_state.conversation_history:
