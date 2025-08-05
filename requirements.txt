@@ -1,8 +1,9 @@
 streamlit==1.31.0
 openai==0.28.0
-pytube==15.0.0
+# pytube==15.0.0  <- We are removing this
 youtube-transcript-api==0.6.1
-whisper==1.1.10
+openai-whisper
 pydub==0.25.1
 python-dotenv==1.0.0
 ffmpeg-python==0.2.0
+yt-dlp          # <- Add this line
