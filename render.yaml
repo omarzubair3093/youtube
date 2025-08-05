@@ -1,0 +1,39 @@
+# render.yaml
+# This file configures the deployment for the YouTube Analyzer on Render.
+
+services:
+  # A name for our web service
+  - name: youtube-analyser
+    # The type of service. 'web' means it's a public-facing HTTP server.
+    type: web
+    # The runtime environment.
+    env: python
+    # The region to deploy in. 'oregon' is a good default, but you can choose others.
+    region: oregon
+    # The branch to automatically deploy from.
+    branch: main
+    # The instance type. 'starter' is the minimum required for this app.
+    plan: starter
+
+    # Build configuration
+    buildCommand: |
+      # This block runs when Render builds your app.
+      # 1. Install system dependencies like ffmpeg first.
+      apt-get update && apt-get install -y ffmpeg
+      # 2. Then, install Python packages.
+      pip install -r requirements.txt
+
+    # Start command configuration
+    # This is the command that runs your application.
+    startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
+
+    # Environment variables
+    # 'sync: false' means Render won't push changes from the dashboard back to this file.
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11 # Specify a Python version for consistency
+      - key: OPENAI_API_KEY
+        # This tells Render to create a secret variable that you will fill in on the dashboard.
+        # It will NOT be stored in your git repository.
+        fromSecret: true
+        sync: false
